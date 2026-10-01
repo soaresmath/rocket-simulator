@@ -16,3 +16,15 @@ class Tank:
         
         self.qtd_atual = self.qtd_atual - qtd_desejada
         return qtd_desejada
+    
+    def refuel(self, qtd_desejada):
+        if qtd_desejada > 0:
+            espaço_disponível = self.capacidade - self.qtd_atual
+
+            combustivel = min(qtd_desejada, espaço_disponível)
+
+            self.qtd_atual = self.qtd_atual + combustivel
+
+            return combustivel
+        else:
+            raise ValueError(f"A quantidade de abstecimento tem que ser maior que zero")
