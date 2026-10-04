@@ -92,11 +92,11 @@ class Rocket:
 
         return angulo_direcao
 
-    def calculate_velocity_components(self):
+    def calculate_velocity_components(self, velocidade):
         angulo = self.calculate_direction_to_destination()
 
-        velocidade_x = self.velocidade * math.cos(angulo)
-        velocidade_y = self.velocidade * math.sin(angulo)
+        velocidade_x = velocidade * math.cos(angulo)
+        velocidade_y = velocidade * math.sin(angulo)
 
         return velocidade_x, velocidade_y
 
@@ -123,6 +123,42 @@ class Rocket:
         else:
             self.x = nova_posicao_x
             self.y = nova_posicao_y
+
+    def calculate_velocity(self, segundos):
+        total_aceleracao = self.calculate_total_acceleration()
+
+        velocidade_final = self.velocidade + (total_aceleracao * segundos)
+
+        velocidade_media = (velocidade_final + self.velocidade) / 2
+
+        return velocidade_final, velocidade_media
+
+    def move(self, segundos):
+        if self.status != "LAUNCHED":
+            raise RuntimeError(f"O foguete não pode atualizar sua posição, pois está {self.status}")
+       
+        self.consume_fuel(segundos)
+    
+        velocidade_final, velocidade_media = self.calculate_velocity(segundos)
+
+        self.velocidade = velocidade_final
+
+        velocidade_componente_x, velocidade_componente_y = self.calculate_velocity_components(velocidade_media)
         
+        nova_posicao_x = self.x + (velocidade_componente_x * segundos)
+        nova_posicao_y = self.y + (velocidade_componente_y * segundos)
+        
+        distancia_destino = self.calculate_distance_to_destination()
+        distancia_percorrida = velocidade_media * segundos
+        
+        if distancia_percorrida >= distancia_destino:
+            self.x = self.destino_x
+            self.y = self.destino_y
+
+            self.status = "LANDED"
+        else:
+            self.x = nova_posicao_x
+            self.y = nova_posicao_y
+
         
         
