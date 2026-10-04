@@ -3,7 +3,7 @@ import pytest
 from rocket import Rocket
 from motor import Motor
 from tank import Tank
-
+from simulation import run_simulation
 
 """
 Testes
@@ -71,3 +71,11 @@ def test_rocket_lands_when_reaches_destination(rocket_with_enough_fuel):
 
     assert rocket_with_enough_fuel.x == rocket_with_enough_fuel.destino_x
     assert rocket_with_enough_fuel.y == rocket_with_enough_fuel.destino_y
+
+def test_simulation_reaches_destination(rocket_with_enough_fuel):
+    resultado = run_simulation(rocket_with_enough_fuel)
+
+    assert resultado.status == "LANDED"
+
+    assert resultado.x == resultado.destino_x
+    assert resultado.y == resultado.destino_y
