@@ -1,164 +1,128 @@
 import math
 
+
 class Rocket:
-    def __init__(self, x: int | float, y: int | float, destino_x: int | float, destino_y: int | float, peso: int, motors: list, tank):
-        if not len(motors):
-            raise ValueError(f"Crie ao menos um motor primeiramente para criar um foguete")
-        elif not isinstance(x, (int, float)):
-            raise TypeError(f"O campo x deve ser inteiro ou float")
-        elif not isinstance(y, (int, float)):
-            raise TypeError(f"O campo y deve ser inteiro ou float")
-        elif not isinstance(destino_x, (int, float)):
-            raise TypeError(f"O campo x deve ser inteiro ou float")
-        elif not isinstance(destino_y, (int, float)):
-            raise TypeError(f"O campo y deve ser inteiro ou float")            
-        else:
-            self.x = x
-            self.y = y
-            self.destino_x = destino_x
-            self.destino_y = destino_y
-            self.status = "NOT-LAUNCHED"
-            self.velocidade = 0
-            self.peso = peso
-            self.motors = motors
-            self.tank = tank
+    RAIO = 5
+    GIRO = 140            # graus por segundo
+    ARRASTO = 0.5         # multiplicado pela densidade do ar
+    VEL_POUSO = 30        # acima disso o pouso vira batida
+    VEL_TOQUE = 8         # abaixo disso o contato nunca destrói
+    ALINHAMENTO_MIN = 0.8 # ~37 graus de inclinação máxima no pouso
 
-    def launch(self):
-        if self.status == "NOT-LAUNCHED":
-            self.status = "LAUNCHED"
-            return f"O foguete foi lançado"
-        
-        elif self.status == "LANDED":
-            return f"O foguete já foi pousado"
+    def __init__(self, x, y, motors, tank):
+        if not motors:
+            raise ValueError("Crie ao menos um motor para criar um foguete")
+        for nome, valor in (("x", x), ("y", y)):
+            if not isinstance(valor, (int, float)):
+                raise TypeError(f"O campo {nome} deve ser inteiro ou float")
 
-        else:
-            return f"O foguete já foi lançado"
+        self.x, self.y = x, y
+        self.vx = self.vy = 0.0
+        self.angulo = 0.0           # 0 = apontando para cima, positivo = horário
+        self.status = "LANDED"      # LANDED, FLYING ou CRASHED
+        self.corpo = None           # corpo onde está pousado
+        self.integridade = 3
+        self.invulneravel = 0.0
+        self.motors = motors
+        self.tank = tank
 
-    def land(self):
-        if self.status == "LAUNCHED":
-            self.status = "LANDED"
-            return f"O foguete pousou"
-        else:
-            return f"Foguete não pode pousar, pois seu status é: {self.status}"
+    @property
+    def velocidade(self):
+        return math.hypot(self.vx, self.vy)
+
+    def direcao(self):
+        a = math.radians(self.angulo)
+        return math.sin(a), -math.cos(a)
 
     def calculate_total_acceleration(self):
-        total_acceleration = 0
+        return sum(m.aceleracao for m in self.motors if m.status == "RUNNING")
 
+    def consume_fuel(self, ligado, segundos):
         for motor in self.motors:
-            if motor.status == "RUNNING":
-                total_acceleration = total_acceleration + motor.aceleracao
-
-        return total_acceleration
-
-    def update_velocity(self, segundos):
-        if self.status == "LAUNCHED":
-
-            self.consume_fuel(segundos)
-
-            total_acceleration = self.calculate_total_acceleration()
-
-            self.velocidade = self.velocidade + (total_acceleration * segundos)
-
-            return self.velocidade
-        else:
-            raise RuntimeError(f"O foguete não pode atualizar a velocidade, pois está {self.status}")
-
-    def consume_fuel(self, segundos):
-        list_fuel_delivery = {}
-
-        for motor in self.motors:
+            if not ligado:
+                motor.desligar()
+                continue
             try:
-                fuel_delivery = motor.request_fuel(self.tank, segundos)
+                motor.request_fuel(self.tank, segundos)
+            except ValueError:
+                pass
+        return self.calculate_total_acceleration()
 
-                list_fuel_delivery[motor] = {"success":True, "fuel": fuel_delivery, "error": None}
-            except ValueError as erro:
-                list_fuel_delivery[motor] = {"success":False, "fuel": 0, "error": erro}
+    def dano(self):
+        if self.invulneravel > 0 or self.status == "CRASHED":
+            return False
+        self.integridade -= 1
+        self.invulneravel = 1.2
+        if self.integridade <= 0:
+            self.status = "CRASHED"
+        return True
 
-        return list_fuel_delivery
+    def update(self, dt, giro, ligado, corpos):
+        """Avança a física. Retorna ("POUSO", corpo), ("BATIDA", corpo) ou None."""
+        if self.status == "CRASHED":
+            return None
 
-    def calculate_distance_to_destination(self):
-        variacao_x = self.destino_x - self.x
-        variacao_y = self.destino_y - self.y
+        self.invulneravel = max(0.0, self.invulneravel - dt)
+        self.angulo += giro * self.GIRO * dt
+        aceleracao = self.consume_fuel(ligado, dt)
 
-        distancia = (variacao_x**2 + variacao_y**2) ** 0.5
+        if self.status == "LANDED":
+            if aceleracao <= 0:
+                return None
+            self.status, self.corpo = "FLYING", None
 
-        return distancia
+        dx, dy = self.direcao()
+        ax, ay = dx * aceleracao, dy * aceleracao
+        for c in corpos:
+            gx, gy = c.atracao(self.x, self.y)
+            ax, ay = ax + gx, ay + gy
 
-    def calculate_direction_to_destination(self):
-        variacao_x = self.destino_x - self.x
-        variacao_y = self.destino_y - self.y
+        k = self.ARRASTO * max(c.densidade(self.x, self.y) for c in corpos)
+        ax, ay = ax - self.vx * k, ay - self.vy * k
 
-        angulo_direcao = math.atan2(variacao_y, variacao_x)
+        self.vx += ax * dt
+        self.vy += ay * dt
+        self.x += self.vx * dt
+        self.y += self.vy * dt
 
-        return angulo_direcao
+        return self._checar_colisao(corpos)
 
-    def calculate_velocity_components(self, velocidade):
-        angulo = self.calculate_direction_to_destination()
+    def _checar_colisao(self, corpos):
+        for c in corpos:
+            dist = c.distancia(self.x, self.y)
+            limite = c.raio + self.RAIO
+            if dist > limite:
+                continue
 
-        velocidade_x = velocidade * math.cos(angulo)
-        velocidade_y = velocidade * math.sin(angulo)
+            nx, ny = (self.x - c.x) / dist, (self.y - c.y) / dist
+            if self.vx * nx + self.vy * ny >= 0 and dist > limite - 1:
+                continue  # está se afastando (decolagem)
 
-        return velocidade_x, velocidade_y
+            dx, dy = self.direcao()
+            alinhado = dx * nx + dy * ny >= self.ALINHAMENTO_MIN
+            toque_leve = self.velocidade <= self.VEL_TOQUE  # raspão lento não destrói
+            if (self.velocidade <= self.VEL_POUSO and alinhado) or toque_leve:
+                self.x, self.y = c.x + nx * limite, c.y + ny * limite
+                self.vx = self.vy = 0.0
+                self.status, self.corpo = "LANDED", c
+                return ("POUSO", c)
 
-    def update_position(self, segundos):
-        if self.status != "LAUNCHED":
-            raise RuntimeError(f"O foguete não pode atualizar sua posição, pois está {self.status}")
-        
-        velocidade_componentes = self.calculate_velocity_components()
+            self.status = "CRASHED"
+            return ("BATIDA", c)
+        return None
 
-        velocidade_componente_x = velocidade_componentes[0]
-        velocidade_componentes_y = velocidade_componentes[1]
-
-        nova_posicao_x = self.x + (velocidade_componente_x * segundos)
-        nova_posicao_y = self.y + (velocidade_componentes_y * segundos)
-
-        distancia_destino = self.calculate_distance_to_destination()
-        distancia_percorrida = self.velocidade * segundos
-        
-        if distancia_percorrida >= distancia_destino:
-            self.x = self.destino_x
-            self.y = self.destino_y
-
-            self.status = "LANDED"
-        else:
-            self.x = nova_posicao_x
-            self.y = nova_posicao_y
-
-    def calculate_velocity(self, segundos):
-        total_aceleracao = self.calculate_total_acceleration()
-
-        velocidade_final = self.velocidade + (total_aceleracao * segundos)
-
-        velocidade_media = (velocidade_final + self.velocidade) / 2
-
-        return velocidade_final, velocidade_media
-
-    def move(self, segundos):
-        if self.status != "LAUNCHED":
-            raise RuntimeError(f"O foguete não pode atualizar sua posição, pois está {self.status}")
-       
-        self.consume_fuel(segundos)
-    
-        velocidade_final, velocidade_media = self.calculate_velocity(segundos)
-
-        self.velocidade = velocidade_final
-
-        velocidade_componente_x, velocidade_componente_y = self.calculate_velocity_components(velocidade_media)
-        
-        nova_posicao_x = self.x + (velocidade_componente_x * segundos)
-        nova_posicao_y = self.y + (velocidade_componente_y * segundos)
-        
-        distancia_destino = self.calculate_distance_to_destination()
-        distancia_percorrida = velocidade_media * segundos
-        
-        if distancia_percorrida >= distancia_destino:
-            self.x = self.destino_x
-            self.y = self.destino_y
-
-            self.status = "LANDED"
-        else:
-            self.x = nova_posicao_x
-            self.y = nova_posicao_y
-
-        
-        
+    def prever_trajetoria(self, corpos, passos=90, dt=0.4):
+        """Pontos futuros se os motores forem desligados agora (só gravidade)."""
+        x, y, vx, vy = self.x, self.y, self.vx, self.vy
+        pontos = []
+        for _ in range(passos):
+            ax = ay = 0.0
+            for c in corpos:
+                gx, gy = c.atracao(x, y)
+                ax, ay = ax + gx, ay + gy
+            vx, vy = vx + ax * dt, vy + ay * dt
+            x, y = x + vx * dt, y + vy * dt
+            if any(c.distancia(x, y) <= c.raio for c in corpos):
+                break
+            pontos.append((x, y))
+        return pontos
