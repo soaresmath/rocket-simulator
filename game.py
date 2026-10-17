@@ -75,10 +75,36 @@ class Jogo:
         self.meteoros, self.itens = [], self.missao.gerar_itens()
         self.acumulado = self.t = self.tempo_msg = 0.0
         self.msg, self.fim = "", None
+        self.checkpoint = None
+        self.salvar_checkpoint(self.terra)
 
     # ------------------------------------------------------------------
     def avisar(self, texto, segundos=3.0):
         self.msg, self.tempo_msg = texto, segundos
+
+    def salvar_checkpoint(self, corpo):
+        """Guarda onde o foguete pousou, a etapa da missão e o combustível."""
+        f = self.foguete
+        self.checkpoint = {"corpo": corpo, "dx": f.x - corpo.x, "dy": f.y - corpo.y,
+                           "etapa": self.missao.etapa, "combustivel": f.tank.qtd_atual}
+
+    def voltar_checkpoint(self):
+        if self.missao.concluida:
+            return self.resetar()
+        cp, f = self.checkpoint, self.foguete
+        corpo = cp["corpo"]
+        f.x, f.y = corpo.x + cp["dx"], corpo.y + cp["dy"]
+        f.vx = f.vy = 0.0
+        f.angulo = math.degrees(math.atan2(cp["dx"], -cp["dy"]))  # bico para fora do astro
+        f.status, f.corpo = "LANDED", corpo
+        f.integridade, f.invulneravel = 3, 0.0
+        for motor in f.motors:
+            motor.desligar()
+        # piso de 100 de combustível para não voltar preso sem poder decolar
+        f.tank.qtd_atual = min(f.tank.capacidade, max(cp["combustivel"], 100))
+        self.missao.etapa = cp["etapa"]
+        self.itens, self.meteoros, self.acumulado, self.fim = self.missao.gerar_itens(), [], 0.0, None
+        self.avisar(f"VOLTOU AO CHECKPOINT: {corpo.nome}")
 
     def tratar_evento(self, evento):
         tipo, corpo = evento
@@ -92,6 +118,10 @@ class Jogo:
                 self.fim = ("MISSÃO CUMPRIDA!", "Todas as entregas foram feitas")
             else:
                 self.avisar(f"ENTREGA CONCLUÍDA: {corpo.nome}! Próximo: {self.missao.alvo.nome}")
+            self.salvar_checkpoint(corpo)
+        else:
+            self.salvar_checkpoint(corpo)
+            self.avisar(f"CHECKPOINT: {corpo.nome}")
 
     def spawn_meteoro(self):
         f = self.foguete
@@ -240,11 +270,12 @@ class Jogo:
         pygame.draw.rect(self.canvas, cor, (5, 61, int(60 * f.tank.fracao), 4))
         for i in range(f.integridade):
             pygame.draw.rect(self.canvas, (230, 70, 70), (4 + i * 9, 70, 7, 5))
+        self.texto(f"SAVE {self.checkpoint['corpo'].nome}", 4, 79, (170, 180, 200))
 
         if self.tempo_msg > 0:
             self.texto(self.msg, LARG // 2, ALT - 22, (255, 255, 255), centro=True)
         if self.t < 10:
-            self.texto("A/D ou setas: girar   ESPACO: propulsor   R: reiniciar",
+            self.texto("A/D: girar   ESPACO: propulsor   R: checkpoint   N: novo jogo",
                        LARG // 2, ALT - 11, (170, 180, 200), centro=True)
         if self.fim:
             veu = pygame.Surface((LARG, ALT), pygame.SRCALPHA)
@@ -252,7 +283,8 @@ class Jogo:
             self.canvas.blit(veu, (0, 0))
             self.texto(self.fim[0], LARG // 2, ALT // 2 - 14, (255, 215, 60), centro=True)
             self.texto(self.fim[1], LARG // 2, ALT // 2, centro=True)
-            self.texto("R para recomeçar", LARG // 2, ALT // 2 + 16, (170, 180, 200), centro=True)
+            ajuda = "N para novo jogo" if self.missao.concluida else "R: voltar ao checkpoint   N: novo jogo"
+            self.texto(ajuda, LARG // 2, ALT // 2 + 16, (170, 180, 200), centro=True)
 
     def desenhar(self):
         c, f = self.canvas, self.foguete
@@ -306,6 +338,8 @@ class Jogo:
                     if e.key == pygame.K_ESCAPE:
                         rodando = False
                     elif e.key == pygame.K_r:
+                        self.voltar_checkpoint()
+                    elif e.key == pygame.K_n:
                         self.resetar()
             self.atualizar(dt)
             self.desenhar()
