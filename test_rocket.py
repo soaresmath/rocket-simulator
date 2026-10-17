@@ -1,81 +1,69 @@
 import pytest
 
-from rocket import Rocket
 from motor import Motor
+from rocket import Rocket
 from tank import Tank
-from simulation import run_simulation
+from world import CorpoCeleste
 
-"""
-Testes
-"""
-@pytest.fixture
-def rocket():
-    motorv1 = Motor(100,50)
-    motorv2 = Motor(100,50)
-
-    tanque = Tank(200, 200)
-
-    foguete = Rocket(0,0,400,500,10000,[motorv1, motorv2],tanque)
-
-    return foguete
 
 @pytest.fixture
-def rocket_with_enough_fuel():
-    motorv1 = Motor(100, 50)
-    motorv2 = Motor(100, 50)
-
-    tanque = Tank(1000, 1000)
-
-    foguete = Rocket(
-        0, 0,
-        400, 500,
-        10000,
-        [motorv1, motorv2],
-        tanque
-    )
-
-    return foguete
-
-def test_rocket_not_lauch(rocket):
-
-    with pytest.raises(RuntimeError):
-        rocket.move(2)
+def terra():
+    return CorpoCeleste("Terra", 0, 0, 300, 40, (0, 0, 255), atmosfera=360)
 
 
-def test_rocket_lauch(rocket):
+def novo_foguete(combustivel=300):
+    return Rocket(0, -(300 + Rocket.RAIO), [Motor(40, 2.5), Motor(40, 2.5)], Tank(300, combustivel))
 
-    rocket.launch()
 
-    posicao_inical = rocket.x
+def test_foguete_exige_motor():
+    with pytest.raises(ValueError):
+        Rocket(0, 0, [], Tank(10, 10))
 
-    rocket.move(2)
 
-    assert rocket.x != posicao_inical
+def test_propulsor_decola(terra):
+    f = novo_foguete()
+    y0 = f.y
+    for _ in range(60):
+        f.update(1 / 60, 0, True, [terra])
+    assert f.status == "FLYING" and f.y < y0
 
-def test_rocket_velocity(rocket):
 
-    rocket.launch()
+def test_sem_combustivel_nao_decola(terra):
+    f = novo_foguete(combustivel=0)
+    f.update(0.1, 0, True, [terra])
+    assert f.status == "LANDED"
 
-    rocket.move(2)
 
-    velocidade_final_code = rocket.velocidade
+def test_motor_consome_combustivel(terra):
+    f = novo_foguete()
+    f.update(1.0, 0, True, [terra])
+    assert f.tank.qtd_atual == pytest.approx(295)
 
-    assert velocidade_final_code == 400
 
-def test_rocket_lands_when_reaches_destination(rocket_with_enough_fuel):
-    rocket_with_enough_fuel.launch()
+def test_gravidade_puxa_para_o_planeta(terra):
+    f = novo_foguete()
+    f.status, f.x, f.y = "FLYING", 0, -1000
+    f.update(0.5, 0, False, [terra])
+    assert f.vy > 0
 
-    rocket_with_enough_fuel.move(3)
 
-    assert rocket_with_enough_fuel.status == "LANDED"
+def test_pouso_suave(terra):
+    f = novo_foguete()
+    f.status, f.x, f.y, f.vy = "FLYING", 0, -312, 10
+    assert f.update(0.5, 0, False, [terra]) == ("POUSO", terra)
+    assert f.status == "LANDED"
 
-    assert rocket_with_enough_fuel.x == rocket_with_enough_fuel.destino_x
-    assert rocket_with_enough_fuel.y == rocket_with_enough_fuel.destino_y
 
-def test_simulation_reaches_destination(rocket_with_enough_fuel):
-    resultado = run_simulation(rocket_with_enough_fuel)
+def test_pouso_brusco_destroi(terra):
+    f = novo_foguete()
+    f.status, f.x, f.y, f.vy = "FLYING", 0, -312, 200
+    assert f.update(0.1, 0, False, [terra]) == ("BATIDA", terra)
+    assert f.status == "CRASHED"
 
-    assert resultado.status == "LANDED"
 
-    assert resultado.x == resultado.destino_x
-    assert resultado.y == resultado.destino_y
+def test_tres_danos_destroem(terra):
+    f = novo_foguete()
+    for _ in range(3):
+        f.invulneravel = 0
+        f.dano()
+    assert f.status == "CRASHED"
