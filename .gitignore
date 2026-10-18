@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .vscode/
 test.py
+build/
+dist/
+*.spec
+__pycache__/
