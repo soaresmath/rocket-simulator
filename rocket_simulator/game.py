@@ -4,10 +4,7 @@ import random
 
 import pygame
 
-from motor import Motor
-from rocket import Rocket
-from tank import Tank
-from world import Combustivel, CorpoCeleste, Meteoro, Missao
+from rocket_simulator.entities import Combustivel, CorpoCeleste, Meteoro, Missao, Motor, Rocket, Tank
 
 LARG, ALT, ZOOM = 320, 180, 4   # desenha em 320x180 e amplia 4x => pixel art
 ESPACO = (4, 6, 14)
@@ -27,7 +24,8 @@ SPRITE = [
 CORES = {"W": (225, 230, 240), "B": (80, 170, 255), "R": (230, 70, 70)}
 
 
-PASTA_PLANETAS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "planets")
+PASTA_PLANETAS = PASTA_PLANETAS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "planets")
+
 ARQUIVOS = {"Terra": "terra", "Lua": "lua", "Marte": "marte", "Júpiter": "jupiter"}
 
 
