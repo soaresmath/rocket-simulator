@@ -1,10 +1,6 @@
 import pytest
 
-from motor import Motor
-from rocket import Rocket
-from tank import Tank
-from world import CorpoCeleste
-
+from rocket_simulator.entities import CorpoCeleste, Motor, Rocket, Tank
 
 @pytest.fixture
 def terra():
